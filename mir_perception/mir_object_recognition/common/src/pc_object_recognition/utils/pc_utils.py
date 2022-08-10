@@ -3,6 +3,7 @@ import numpy as np
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import normalize
 from sklearn.decomposition import PCA
+import open3d
 
 # copied from python-pcl
 def float_to_rgb(p_rgb):
@@ -160,3 +161,44 @@ def get_3d_grid_gmm(subdivisions=[5,5,5], variance=0.04):
     from sklearn.mixture.gaussian_mixture import _compute_precision_cholesky
     gmm.precisions_cholesky_ = _compute_precision_cholesky(covariances, 'diag')
     return gmm
+
+def extract_pcd(pcd_file, 
+                num_points=2048,
+                color=True, 
+                downsample_cloud=True,
+                pad_cloud=True,
+                normalize_cloud=True
+                ):
+    
+    cloud = open3d.io.read_point_cloud(pcd_file)
+
+
+    if np.asarray(cloud.points).shape[0] > 0:
+        #downsample cloud until the size < num_points
+        if downsample_cloud:
+            # start with big voxel size for cloud with many points
+            if np.asarray(cloud.points).shape[0] > 10000:
+                cloud = cloud.voxel_down_sample(voxel_size = 0.01)
+            elif np.asarray(cloud.points).shape[0] > 5000:
+                cloud = cloud.voxel_down_sample(voxel_size = 0.0040)
+
+            cloud_iteration = 0
+            voxel_filter = 0.0020
+            filter_adjusment = 0.0001
+            while (np.asarray(cloud.points).shape[0] > num_points):
+                cloud = cloud.voxel_down_sample(voxel_size = voxel_filter)
+                if cloud_iteration > 5:
+                    voxel_filter = voxel_filter + filter_adjusment
+                    cloud_iteration = 0
+                cloud_iteration += 1
+
+        xyzrgb = np.hstack((np.asarray(cloud.points), np.asarray(cloud.colors)))
+        #pad cloud until its size == num_points
+        if pad_cloud:
+            while xyzrgb.shape[0] < num_points:
+                rand_idx = np.random.randint(xyzrgb.shape[0])
+                xyzrgb = np.vstack([xyzrgb, xyzrgb[rand_idx]])
+    else:
+        return None
+            
+    return xyzrgb
