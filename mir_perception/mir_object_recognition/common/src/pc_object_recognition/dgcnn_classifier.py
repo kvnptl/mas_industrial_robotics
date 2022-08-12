@@ -66,7 +66,7 @@ class DGCNNClassifier(CNNBasedClassifiers):
 
         for pcl, label in test_loader:
 
-            print("inferencing ...")
+            # print("inferencing ...")
 
             data = pcl.to(device)
     
@@ -75,8 +75,16 @@ class DGCNNClassifier(CNNBasedClassifiers):
             logits = model(data)
 
             prob = nnf.softmax(logits, dim=1) # convert logits to probabilities
+
             top_p, top_class = prob.topk(1, dim = 1)
 
-            print(f'Probability - {round(top_p.item(),2)} Class - {top_class[0].item()}')
+            # set probability threshold to 0.5
+            
+            if top_p.item() > 0.6: # if probability is greater than 0.6, then predict as that class
+                
+                print(f'Probability - {round(top_p.item(),2)} Class - {top_class[0].item()}')
+                return top_class.item(), top_p.item()
 
-            return top_class[0].item(), top_p.item()
+            else:
+                print("No object found")
+                return None, None
