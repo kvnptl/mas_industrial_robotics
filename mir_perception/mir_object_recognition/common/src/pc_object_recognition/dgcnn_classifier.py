@@ -81,10 +81,10 @@ class DGCNNClassifier(CNNBasedClassifiers):
             # set probability threshold to 0.5
             
             if top_p.item() > 0.6: # if probability is greater than 0.6, then predict as that class
-                
+
                 print(f'Probability - {round(top_p.item(),2)} Class - {top_class[0].item()}')
                 return top_class.item(), top_p.item()
 
             else:
                 print("No object found")
-                return None, None
+                pass
