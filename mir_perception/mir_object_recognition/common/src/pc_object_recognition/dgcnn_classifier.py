@@ -64,27 +64,31 @@ class DGCNNClassifier(CNNBasedClassifiers):
         model.load_state_dict(torch.load(self.model_path))
         model = model.eval()
 
+        break_flag = False
+
         for pcl, label in test_loader:
 
-            # print("inferencing ...")
+            if break_flag == False:
+             
+                # print("inferencing ...")
+                break_flag = True
+                data = pcl.to(device)
+        
+                data = data.permute(0, 2, 1)
 
-            data = pcl.to(device)
-    
-            data = data.permute(0, 2, 1)
+                logits = model(data)
 
-            logits = model(data)
+                prob = nnf.softmax(logits, dim=1) # convert logits to probabilities
 
-            prob = nnf.softmax(logits, dim=1) # convert logits to probabilities
+                top_p, top_class = prob.topk(1, dim = 1)
 
-            top_p, top_class = prob.topk(1, dim = 1)
-
-            # set probability threshold to 0.5
-            
-            if top_p.item() > 0.6: # if probability is greater than 0.6, then predict as that class
-
-                print(f'Probability - {round(top_p.item(),2)} Class - {top_class[0].item()}')
-                return top_class.item(), top_p.item()
-
+                # set probability threshold to 0.5
+                
+                if top_p.item() > 0.6: # if probability is greater than 0.6, then predict as that class
+                    # print(f'Probability - {round(top_p.item(),2)} Class - {top_class[0].item()}')
+                    return top_class.item(), top_p.item()
+                    
+                else:
+                    return None, None
             else:
-                print("No object found")
-                pass
+                break

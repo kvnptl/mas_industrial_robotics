@@ -3,8 +3,8 @@ import numpy as np
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import normalize
 from sklearn.decomposition import PCA
-import open3d
-import open3d
+# import open3d
+# import open3d
 
 # copied from python-pcl
 def float_to_rgb(p_rgb):
