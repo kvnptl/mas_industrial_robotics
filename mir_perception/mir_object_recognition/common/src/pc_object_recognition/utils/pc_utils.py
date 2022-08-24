@@ -3,10 +3,7 @@ import numpy as np
 from sklearn.mixture import GaussianMixture
 from sklearn.preprocessing import normalize
 from sklearn.decomposition import PCA
-# import open3d
-# import open3d
 
-# copied from python-pcl
 def float_to_rgb(p_rgb):
     """
     Get rgb color from float rgb
@@ -145,7 +142,6 @@ def get_3d_grid_gmm(subdivisions=[5,5,5], variance=0.04):
     :param variance: scalar for spherical gmm.p
     :return gmm: gmm: instance of sklearn GaussianMixture (GMM) object Gauassian mixture model
     """
-    # n_gaussians = reduce(lambda x, y: x*y,subdivisions)
     n_gaussians = np.prod(np.array(subdivisions))
     step = [1.0/(subdivisions[0]),    1.0/(subdivisions[1]),    1.0/(subdivisions[2])]
 
@@ -173,7 +169,8 @@ def extract_pcd(pointcloud,
 
         xyzrgb = pointcloud
 
-        #pad cloud until its size == num_points
+        # Pad cloud until its size is equal num_points
+
         if pad_cloud:
             while xyzrgb.shape[0] < num_points:
                 rand_idx = np.random.randint(xyzrgb.shape[0])

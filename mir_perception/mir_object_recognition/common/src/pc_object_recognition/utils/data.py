@@ -1,5 +1,4 @@
 from torch.utils.data import Dataset
-# import pc_utils.extract_pcd as extract_pcd
 from pc_object_recognition.utils.pc_utils import extract_pcd
 import numpy as np
 
@@ -23,3 +22,6 @@ class infer_data(Dataset): # dataloaer for inference
         label = np.array([0])
 
         return self.data, label
+
+
+
