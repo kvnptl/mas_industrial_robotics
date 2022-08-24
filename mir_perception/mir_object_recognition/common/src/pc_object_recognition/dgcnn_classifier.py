@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 class DGCNNClassifier(CNNBasedClassifiers):
     """
-    Point cloud classifier using Dynamic graph CNN (DGCNN) 
+    Point cloud classifier using Dynamic graph CNN (DGCNN)
 
     """
 
@@ -19,8 +19,9 @@ class DGCNNClassifier(CNNBasedClassifiers):
         self.num_classes = kwargs.get("num_classes", None)
         self.num_points = kwargs.get("num_points", None)
         self.cloud_dim = kwargs.get("cloud_dim", None)
-
+        
         # only support batch size 1 for inferencing
+        
         self.test_batch_size = 1 
         self.cuda = kwargs.get("cuda", False)
         self.model_path = kwargs.get("model_path", None)
@@ -29,7 +30,6 @@ class DGCNNClassifier(CNNBasedClassifiers):
             "emb_dims": 1024,
             "dropout": 0.5,
             "k": 20
-        }# contains the arguments that are passed for the DGCNN model
 
 
     def classify(self, pointcloud, center=True, rotate=True, pad=True): 
@@ -47,7 +47,8 @@ class DGCNNClassifier(CNNBasedClassifiers):
 
         :return:    Predicted label and probablity
         """
-        
+
+    
         test_loader = DataLoader(infer_data(num_points=self.num_points, pcl_path=pointcloud),
                                 batch_size=self.test_batch_size, shuffle=True, drop_last=False)
 
@@ -55,6 +56,7 @@ class DGCNNClassifier(CNNBasedClassifiers):
         model = DGCNN(self.args).to(device)
         model = nn.DataParallel(model)
         model.load_state_dict(torch.load(self.model_path))
+        self.model_path, map_location=torch.device('cpu')))
         model = model.eval()
         break_flag = False
 
@@ -73,3 +75,4 @@ class DGCNNClassifier(CNNBasedClassifiers):
                     return None, None
             else:
                 break
+
