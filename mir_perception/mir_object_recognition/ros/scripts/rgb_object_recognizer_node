@@ -180,8 +180,11 @@ if __name__ == '__main__':
     dataset = rospy.get_param("~dataset")
     model_dir = rospy.get_param("~model_dir")
 
+
     object_recognizer = RGBObjectRecognizer(
         model_dir=model_dir, net=net, model_name=classifier_name, debug_mode=True)
     rospy.loginfo('\033[92m'+"RGB Recognizer is ready using %s : %s , dataset: %s ",
                   net, classifier_name, dataset)
     rospy.spin()
+
+
