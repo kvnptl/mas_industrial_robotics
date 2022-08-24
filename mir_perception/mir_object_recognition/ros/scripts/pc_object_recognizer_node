@@ -110,7 +110,12 @@ class PointcloudObjectRecognizer():
                         object.views[0].point_cloud, color="rgb")
                     label, probability = self.classifier.classify(
                         cloud, center=True, rotate=True, pad=True)
-                    name = self.label_to_name[label]
+                    if (label, probability) != (None, None):
+                        name = self.label_to_name[label]
+                        probability = probability
+                    else:
+                        name = "unknown"
+                        probability = 0.0
 
                 object.name = name
                 object.probability = probability
@@ -159,6 +164,7 @@ if __name__ == '__main__':
 
     object_recognizer = PointcloudObjectRecognizer(
         model, model_id, dataset, model_dir)
-    rospy.loginfo(
-        "PCL Recognizer is ready using: %s , model: %s ", model, model_id)
+
+    rospy.loginfo('\033[92m'+"PCL Recognizer is ready using %s , model: %s ",
+                  model, model_id)
     rospy.spin()
