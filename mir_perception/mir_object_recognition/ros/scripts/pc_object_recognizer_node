@@ -5,28 +5,17 @@ import importlib
 import os
 
 import numpy as np
-<<<<<<< HEAD
-=======
-import common.src.pc_object_recognition.utils.pc_utils as pc_utils
->>>>>>> noetic
+import pc_object_recognition.utils.pc_utils as pc_utils
 import roslib
 import rospy
 import sensor_msgs.point_cloud2
 import yaml
 from mas_perception_msgs.msg import ObjectList
-<<<<<<< HEAD
 import pc_object_recognition.utils.pc_utils as pc_utils
 from pc_object_recognition.cnn_based_classifiers import CNNBasedClassifiers
 from pc_object_recognition.dgcnn_classifier import DGCNNClassifier
 from pc_object_recognition.feature_based_classifiers import FeatureBasedClassifiers
 from pc_object_recognition.utils.features import FVRDDFeatureExtraction
-=======
-from common.src.pc_object_recognition.cnn_based_classifiers import CNNBasedClassifiers
-from common.src.pc_object_recognition.dgcnn_classifier import DGCNNClassifier
-from common.src.pc_object_recognition.feature_based_classifiers import FeatureBasedClassifiers
-from common.src.pc_object_recognition.utils.features import FVRDDFeatureExtraction
->>>>>>> noetic
-
 
 class PointcloudObjectRecognizer():
     """
@@ -64,10 +53,6 @@ class PointcloudObjectRecognizer():
 
         if model == "feature_based":        # we dont need this part now only use cnn_based
 
-<<<<<<< HEAD
-=======
-
->>>>>>> noetic
             feature_extraction = FVRDDFeatureExtraction(model_id)
             self.fe_method = feature_extraction.get_method()
             if model_id == "fvrdd":
@@ -83,13 +68,8 @@ class PointcloudObjectRecognizer():
                 classifier_file, label_encoder)
 
         elif model == "cnn_based":
-
-<<<<<<< HEAD
             # model.t7 is the model file, we are not using .cpkt file
             checkpoint = os.path.join(model_dir, 'model.t7')
-=======
-            checkpoint = os.path.join(model_dir , 'model.t7') # model.t7 is the model file, we are not using .cpkt file
->>>>>>> noetic
 
             module_name = "pc_object_recognition" + "." + model_id.lower()+"_"+"classifier"
 
@@ -98,18 +78,10 @@ class PointcloudObjectRecognizer():
                 importlib.import_module(module_name), class_name)
             model_configs = configs['model'][model][model_id.lower()]
 
-<<<<<<< HEAD
-            self.classifier = ClassifierClass(model_path=checkpoint,
-                                              num_classes=model_configs['num_classes'],
-                                              num_points=model_configs['num_points'],
-                                              cloud_dim=model_configs['cloud_dim'])
-=======
             self.classifier = ClassifierClass(model_path=checkpoint, 
                                                 num_classes=model_configs['num_classes'], 
                                                 num_points=model_configs['num_points'], 
                                                 cloud_dim=model_configs['cloud_dim'])
-
->>>>>>> noetic
 
     def recognize_object_topic_cb(self, object_list):
         """
@@ -123,6 +95,7 @@ class PointcloudObjectRecognizer():
             rospy.loginfo("%d clouds received ", len(object_list.objects))
             recognized_object_list = ObjectList()
             recognized_object_list = object_list.objects
+
             for object in recognized_object_list:
                 if self.model == "feature_based":
                     cloud = self.extract_pointcloud(
@@ -134,8 +107,12 @@ class PointcloudObjectRecognizer():
                 elif self.model == "cnn_based":
                     cloud = self.extract_pointcloud(
                         object.views[0].point_cloud, color="rgb")
+
+                    # Kevin: something wrong with passing the cloud to the classifier
+                    # check further comments in the classifier code
                     label, probability = self.classifier.classify(
                         cloud, center=True, rotate=True, pad=True)
+
                     if (label, probability) != (None, None):
                         name = self.label_to_name[label]
                         probability = probability
@@ -143,9 +120,26 @@ class PointcloudObjectRecognizer():
                         name = "unknown"
                         probability = 0.0
 
+
+                    if (label, probability) != (None, None):
+                        name = self.label_to_name[label]
+                        probability = probability
+                    else:
+                        name = "unknown object found"
+                        probability = 0.0
+                        continue
+
+                    print('\n######################')
+                    print('name: ', name)
+                    print('######################\n')
+
+                # Kevin: why are we not storing name and probability in object?
+                # here it's getting overwritten
                 object.name = name
                 object.probability = probability
 
+            # Kevin: why are we not updating recognized_object_list?
+            # this is just publishing incoming object_list
             self.pub.publish(recognized_object_list)
 
     def extract_pointcloud(self, pc, color="hsv"):

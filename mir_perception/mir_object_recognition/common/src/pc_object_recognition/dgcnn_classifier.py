@@ -48,19 +48,20 @@ class DGCNNClassifier(CNNBasedClassifiers):
         :return:    Predicted label and probablity
         """
 
-    
-        test_loader = DataLoader(infer_data(num_points=self.num_points, pcl_path=pointcloud),
-                                batch_size=self.test_batch_size, shuffle=True, drop_last=False)
+
+        pointcloud_dataloader = DataLoader(infer_data(num_points=self.num_points, pcl_path=pointcloud),
+                                           batch_size=self.test_batch_size, shuffle=True, drop_last=False)
 
         device = torch.device("cuda" if self.cuda else "cpu")
         model = DGCNN(self.args).to(device)
         model = nn.DataParallel(model)
-        model.load_state_dict(torch.load(self.model_path))
+        model.load_state_dict(torch.load(
+            self.model_path, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")))
         self.model_path, map_location=torch.device('cpu')))
         model = model.eval()
         break_flag = False
 
-        for pcl, _ in test_loader:
+        for pcl, _ in pointcloud_dataloader:
 
             if break_flag == False:
                 break_flag = True
