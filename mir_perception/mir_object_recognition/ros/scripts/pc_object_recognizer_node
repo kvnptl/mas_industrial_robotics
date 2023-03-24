@@ -5,6 +5,7 @@ import importlib
 import os
 
 import numpy as np
+import pc_object_recognition.utils.pc_utils as pc_utils
 import roslib
 import rospy
 import sensor_msgs.point_cloud2
@@ -15,7 +16,6 @@ from pc_object_recognition.cnn_based_classifiers import CNNBasedClassifiers
 from pc_object_recognition.dgcnn_classifier import DGCNNClassifier
 from pc_object_recognition.feature_based_classifiers import FeatureBasedClassifiers
 from pc_object_recognition.utils.features import FVRDDFeatureExtraction
-
 
 class PointcloudObjectRecognizer():
     """
@@ -66,6 +66,7 @@ class PointcloudObjectRecognizer():
             self.classifier = FeatureBasedClassifiers(classifier_file, label_encoder)
         
         elif model == "cnn_based":
+            # model.t7 is the model file, we are not using .cpkt file
             checkpoint = os.path.join(model_dir, 'model.t7')
             module_name = "pc_object_recognition" + "." + model_id.lower()+"_"+"classifier"
             class_name = model_id.upper()+"Classifier"
@@ -73,10 +74,10 @@ class PointcloudObjectRecognizer():
                 importlib.import_module(module_name), class_name)
             model_configs = configs['model'][model][model_id.lower()]
 
-            self.classifier = ClassifierClass(model_path=checkpoint,
-                                              num_classes=model_configs['num_classes'],
-                                              num_points=model_configs['num_points'],
-                                              cloud_dim=model_configs['cloud_dim'])
+            self.classifier = ClassifierClass(model_path=checkpoint, 
+                                                num_classes=model_configs['num_classes'], 
+                                                num_points=model_configs['num_points'], 
+                                                cloud_dim=model_configs['cloud_dim'])
 
     def recognize_object_topic_cb(self, object_list):
         """
@@ -105,6 +106,14 @@ class PointcloudObjectRecognizer():
 
                     label, probability = self.classifier.classify(
                         cloud, center=True, rotate=True, pad=True)
+
+                    if (label, probability) != (None, None):
+                        name = self.label_to_name[label]
+                        probability = probability
+                    else:
+                        name = "unknown"
+                        probability = 0.0
+
 
                     if (label, probability) != (None, None):
                         name = self.label_to_name[label]
@@ -160,6 +169,7 @@ if __name__ == '__main__':
 
     object_recognizer = PointcloudObjectRecognizer(
         model, model_id, dataset, model_dir)
+
     rospy.loginfo('\033[92m'+"PCL Recognizer is ready using %s , model: %s ",
                   model, model_id)
     rospy.spin()

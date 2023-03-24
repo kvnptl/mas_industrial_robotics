@@ -181,8 +181,11 @@ if __name__ == '__main__':
     weights = os.path.join(roslib.packages.get_pkg_dir("mir_rgb_object_recognition_models"),
                            'common', 'models', classifier_name, dataset, "best.pt")
 
+
     object_recognizer = RGBObjectRecognizer(
         weights=weights, debug_mode=True)
     rospy.loginfo("RGB Recognizer is ready using %s : %s , dataset: %s ",
                   net, classifier_name, dataset)
     rospy.spin()
+
+
