@@ -16,7 +16,7 @@ from smach_ros import ActionServerWrapper
 # ===============================================================================
 
 class SetupMoveArm(smach.State):
-    def __init__(self, arm_target, is_heavy=False):
+    def __init__(self, arm_target):
         smach.State.__init__(
             self,
             outcomes=["succeeded", "failed"],
@@ -24,20 +24,17 @@ class SetupMoveArm(smach.State):
             output_keys=["feedback", "result", "move_arm_to"],
         )
         self.arm_target = arm_target
-        self.is_heavy = is_heavy
 
     def execute(self, userdata):
         platform = Utils.get_value_of(userdata.goal.parameters, "platform")
         if platform is None:
             rospy.logwarn('Missing parameter "platform". Using default.')
-            platform = "PLATFORM_MIDDLE"
+            platform = "PLATFORM_LEFT"
         platform = platform.lower()
 
         if self.arm_target == "pre":
             platform += "_pre"
 
-        if self.is_heavy:
-            platform += "_heavy"
         userdata.move_arm_to = platform
 
         # Add empty result msg (because if none of the state do it, action server gives error)
@@ -76,14 +73,12 @@ def main():
         output_keys=["feedback", "result"],
     )
 
-    # read heavy object list
-    sm.userdata.heavy_objects = rospy.get_param("~heavy_objects", ["m20_100"])
 
     with sm:
         # add states to the container
         smach.StateMachine.add(
             "MOVE_ARM_TO_STAGE_INTERMEDIATE",
-            gms.move_arm("stage_intermediate"),
+            gms.move_arm("pre_place"),
             transitions={
                 "succeeded": "SETUP_MOVE_ARM_PRE_STAGE",
                 "failed": "MOVE_ARM_TO_STAGE_INTERMEDIATE",
@@ -129,7 +124,33 @@ def main():
         smach.StateMachine.add(
             "OPEN_GRIPPER",
             gms.control_gripper("open_narrow"),
-            transitions={"succeeded": "OVERALL_SUCCESS"},
+            transitions={"succeeded": "SETUP_MOVE_ARM_RETRACT"},
+        )
+
+        smach.StateMachine.add(
+            "SETUP_MOVE_ARM_RETRACT",
+            SetupMoveArm("pre"),
+            transitions={
+                "succeeded": "MOVE_ARM_RETRACT",
+                "failed": "SETUP_MOVE_ARM_RETRACT",
+            },
+        )
+        smach.StateMachine.add(
+            "MOVE_ARM_RETRACT",
+            gms.move_arm(),
+            transitions={
+                "succeeded": "MOVE_ARM_TO_STAGE_INTERMEDIATE_RETRACT",
+                "failed": "MOVE_ARM_RETRACT"
+            },
+        )
+
+        smach.StateMachine.add(
+            "MOVE_ARM_TO_STAGE_INTERMEDIATE_RETRACT",
+            gms.move_arm("pre_place"),
+            transitions={
+                "succeeded": "OVERALL_SUCCESS",
+                "failed": "MOVE_ARM_TO_STAGE_INTERMEDIATE_RETRACT",
+            },
         )
 
     sm.register_transition_cb(transition_cb)
