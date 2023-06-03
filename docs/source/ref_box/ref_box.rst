@@ -1,48 +1,80 @@
-Refbox
+atwork-commander
+================
 
-*In Robot*
+.. image:: https://travis-ci.org/steup/atwork-commander.svg?branch=noetic
+   :target: https://travis-ci.org/steup/atwork-commander
 
-The robot should have fkie_master_discovery and fkie_master_sync 
+Complete reimplementation of the `old`_ Referee Box (Refbox) for the @Work-League of RoboCup.
 
-**Step 1:** Run the master discovery node in the robot:
+This Refbox is a native ROS application.
+However, it aims to enable multiple communication backends through individual plugins.
+Additionally, a RViz GUI will be developed, which will provide enhanced visualization
+capabilities for referees and visitors / spectators.
+Generation of tasks conforming to the `rule book`_
+are configurable using the ROS parameters in order to be easily adaptable for
+any future changes in rules.
 
- ``rosrun fkie_master_discovery master_discovery``
+How to run the Refbox
+=====================
 
-**Starting the Refbox**
+Run in Robot
+------------
 
-*In the local system*
+Assumption:
 
-**Step 1:** Export the robot into local system in all terminals:
+- All other "bringup", "planning_bringup", "nav2d" and other(if available) components of the robot is running already
+- Robot is localized
 
- ``export ROS_MASTER_URI=http://<robot_ip>:11311``
+1. Run the master discovery node on the robot::
 
-**Step 2:** Start the __core__ and __com__ components:
+   rosrun fkie_master_discovery master_discovery
 
- ``roslaunch atwork_commander atwork_commander.launch``
+2. Listen to the /task topic in the robot::
 
-for verbosity add "verbose:=true"
+   rostopic echo /atwork_commander/task
 
- ``roslaunch atwork_commander atwork_commander.launch verbose:=true``
+3. Run "Skynet" after generating the task from Local PC::
 
-If the verbose is true terminal will show the status of the robot (it will in IDLE state before task generation)
+   roslaunch mir_planning_core task_planning_sm.launch
 
-**Step 3:** Generate a task using the CLI:
+Run in Local PC
+---------------
 
- ``roslaunch atwork_commander generate.launch task:=<task to generate>``
+1. Run "roscore" in the local PC::
 
-example tasks : BMT, RTT, BTT1 etc.
+   roscore
 
-After task generation the robot will be in READY state.
+2. Export the robot in two terminals in the local PC::
 
-**Step 4:** Start the skynet in the robot 
+   export ROS_MASTER_URI=http://<robot_ip>:11311
 
- ``roslaunch mir_planning_core task_planning_sm.launch``
+   Warning: If the robot's roscore is not exported to the local terminal then the atwork_commander cannot change from 
+   IDLE -> Ready state
 
-After the skynet is started the generated task will be available in the robot under the topic 
+3. Run "atwork_commander" in a terminal::
 
- ``rostopic echo /atwork_commander/task``
-  
-**Step 5:** Start the task execution using the CLI: 
+   roslaunch atwork_commander atwork_commander.launch
 
- ``roslaunch atwork_commander execute.launch``
+   Note: 
+   - This terminal will be the primary monitoring place where all the stage changes can be monitored 
+   - There is a --verbose command flag in the launch file, enable it to see the generated plan 
 
+4. Generate plan::
+
+   roslaunch atwork_commander generate.launch task:=<task to generate>
+
+   Note:
+   - Example tasks : BMT, RTT, BTT1 etc.
+   - After task generation the robot will be in READY state.
+
+5. Start "skynet" in the robot
+
+6. Change State of robot from READY to PREPARATION::
+
+   roslaunch atwork_commander start.launch
+
+7. Change State of robot from PREPARATION to EXECUTION::
+
+   roslaunch atwork_commander forward.launch
+
+   Note: ROBOT should start moving after this step
