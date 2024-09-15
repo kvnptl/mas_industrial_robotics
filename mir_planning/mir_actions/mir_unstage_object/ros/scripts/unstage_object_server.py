@@ -15,7 +15,7 @@ from smach_ros import ActionServerWrapper
 # ===============================================================================
 
 class SetupMoveArm(smach.State):
-    def __init__(self, arm_target, is_heavy=False):
+    def __init__(self, arm_target):
         smach.State.__init__(
             self,
             outcomes=["succeeded", "failed"],
@@ -23,20 +23,18 @@ class SetupMoveArm(smach.State):
             output_keys=["feedback", "result", "move_arm_to"],
         )
         self.arm_target = arm_target
-        self.is_heavy = is_heavy
+        
 
     def execute(self, userdata):
         platform = Utils.get_value_of(userdata.goal.parameters, "platform")
         if platform is None:
             rospy.logwarn('Missing parameter "platform". Using default.')
-            platform = "PLATFORM_MIDDLE"
+            platform = "PLATFORM_LEFT"
         platform = platform.lower()
 
         if self.arm_target == "pre":
             platform += "_pre"
 
-        if self.is_heavy:
-            platform += "_heavy"
         userdata.move_arm_to = platform
 
         # Add empty result msg (because if none of the state do it, action server gives error)
@@ -45,29 +43,6 @@ class SetupMoveArm(smach.State):
             current_state="SetupMoveArm", text="Moving arm to " + platform
         )
         return "succeeded"
-
-
-# ===============================================================================
-
-class IsObjectHeavy(smach.State):
-    def __init__(self):
-        smach.State.__init__(
-            self,
-            outcomes=["heavy", "light"],
-            input_keys=["goal", "heavy_objects"],
-            output_keys=[],
-        )
-
-    def execute(self, userdata):
-        obj = Utils.get_value_of(userdata.goal.parameters, "object")
-        if obj is None:
-            rospy.logwarn('Missing parameter "object". Using default.')
-            return "light"
-        for heavy_object in userdata.heavy_objects:
-            if heavy_object.upper() in obj.upper():
-                return "heavy"
-        return "light"
-
 
 # ===============================================================================
 
@@ -98,60 +73,31 @@ def main():
         output_keys=["feedback", "result"],
     )
 
-    # read heavy object list
-    sm.userdata.heavy_objects = rospy.get_param("~heavy_objects", ["m20_100"])
-
     with sm:
         smach.StateMachine.add(
             "OPEN_GRIPPER",
             gms.control_gripper("open_narrow"),
-            transitions={"succeeded": "MOVE_ARM_TO_STAGE_INTERMEDIATE"},
-        )
-        # add states to the container
-        smach.StateMachine.add(
-            "MOVE_ARM_TO_STAGE_INTERMEDIATE",
-            gms.move_arm("stage_intermediate"),
-            transitions={
-                "succeeded": "CHECK_IF_OBJECT_HEAVY",
-                "failed": "MOVE_ARM_TO_STAGE_INTERMEDIATE",
-            },
-        )
-
-        smach.StateMachine.add(
-            "CHECK_IF_OBJECT_HEAVY",
-            IsObjectHeavy(),
-            transitions={
-                "heavy": "MOVE_ARM_TO_STAGE_INTERMEDIATE_2",
-                "light": "SETUP_MOVE_ARM_PRE_STAGE",
-            },
-        )
-
-        smach.StateMachine.add(
-            "MOVE_ARM_TO_STAGE_INTERMEDIATE_2",
-            gms.move_arm("stage_intermediate_2"),
-            transitions={
-                "succeeded": "SETUP_MOVE_ARM_PRE_STAGE_HEAVY",
-                "failed": "MOVE_ARM_TO_STAGE_INTERMEDIATE_2",
-            },
+            transitions={"succeeded": "SETUP_MOVE_ARM_PRE_STAGE"},
         )
 
         smach.StateMachine.add(
             "SETUP_MOVE_ARM_PRE_STAGE",
             SetupMoveArm("pre"),
             transitions={
-                "succeeded": "MOVE_ARM_PRE_STAGE",
+                "succeeded": "SETUP_ARM_PRE_STAGE",
                 "failed": "SETUP_MOVE_ARM_PRE_STAGE",
             },
         )
 
         smach.StateMachine.add(
-            "MOVE_ARM_PRE_STAGE",
+            "SETUP_ARM_PRE_STAGE",
             gms.move_arm(),
             transitions={
                 "succeeded": "SETUP_MOVE_ARM_STAGE",
-                "failed": "MOVE_ARM_PRE_STAGE",
+                "failed": "SETUP_ARM_PRE_STAGE"
             },
         )
+        # add states to the container
 
         smach.StateMachine.add(
             "SETUP_MOVE_ARM_STAGE",
@@ -172,55 +118,17 @@ def main():
         )
 
         smach.StateMachine.add(
-            "SETUP_MOVE_ARM_PRE_STAGE_HEAVY",
-            SetupMoveArm("pre", is_heavy=True),
-            transitions={
-                "succeeded": "MOVE_ARM_PRE_STAGE_HEAVY",
-                "failed": "SETUP_MOVE_ARM_PRE_STAGE_HEAVY",
-            },
-        )
-
-        smach.StateMachine.add(
-            "MOVE_ARM_PRE_STAGE_HEAVY",
-            gms.move_arm(),
-            transitions={
-                "succeeded": "SETUP_MOVE_ARM_STAGE_HEAVY",
-                "failed": "MOVE_ARM_PRE_STAGE_HEAVY",
-            },
-        )
-
-        smach.StateMachine.add(
-            "SETUP_MOVE_ARM_STAGE_HEAVY",
-            SetupMoveArm("final", is_heavy=True),
-            transitions={
-                "succeeded": "MOVE_ARM_STAGE_HEAVY",
-                "failed": "SETUP_MOVE_ARM_STAGE_HEAVY",
-            },
-        )
-
-        smach.StateMachine.add(
-            "MOVE_ARM_STAGE_HEAVY",
-            gms.move_arm(),
-            transitions={
-                "succeeded": "CLOSE_GRIPPER",
-                "failed": "MOVE_ARM_STAGE_HEAVY"
-            },
-        )
-
-        smach.StateMachine.add(
             "CLOSE_GRIPPER",
             gms.control_gripper("close"),
-            transitions={"succeeded": "CHECK_IF_OBJECT_HEAVY_AGAIN"},
+            transitions={"succeeded": "VERIFY_OBJECT_GRASPED"},
         )
 
-        # TODO: verify if object is grasped or not
-
         smach.StateMachine.add(
-            "CHECK_IF_OBJECT_HEAVY_AGAIN",
-            IsObjectHeavy(),
+            "VERIFY_OBJECT_GRASPED",
+            gms.verify_object_grasped(5),
             transitions={
-                "heavy": "SETUP_MOVE_ARM_PRE_STAGE_HEAVY_AGAIN",
-                "light": "SETUP_MOVE_ARM_PRE_STAGE_AGAIN",
+                "succeeded": "SETUP_MOVE_ARM_PRE_STAGE_AGAIN",
+                "failed": "OVERALL_FAILED",
             },
         )
 
@@ -237,44 +145,22 @@ def main():
             "MOVE_ARM_PRE_STAGE_AGAIN",
             gms.move_arm(blocking=True),
             transitions={
-                "succeeded": "MOVE_ARM_TO_STAGE_INTERMEDIATE_FINAL",
+                "succeeded": "MOVE_ARM_TO_PRE_PLACE",
                 "failed": "MOVE_ARM_PRE_STAGE_AGAIN",
             },
         )
 
+        """
+        Barrier tape configuration is modified so while unstaging 
+        the arm should go to pre place tape config in yb2-robot-configuration
+        inorder to avoid any occlution in the camera 
+        """
         smach.StateMachine.add(
-            "SETUP_MOVE_ARM_PRE_STAGE_HEAVY_AGAIN",
-            SetupMoveArm("pre", is_heavy=True),
-            transitions={
-                "succeeded": "MOVE_ARM_PRE_STAGE_HEAVY_AGAIN",
-                "failed": "SETUP_MOVE_ARM_PRE_STAGE_HEAVY_AGAIN",
-            },
-        )
-
-        smach.StateMachine.add(
-            "MOVE_ARM_PRE_STAGE_HEAVY_AGAIN",
-            gms.move_arm(blocking=False),
-            transitions={
-                "succeeded": "MOVE_ARM_TO_STAGE_INTERMEDIATE_2_FINAL",
-                "failed": "MOVE_ARM_PRE_STAGE_HEAVY_AGAIN",
-            },
-        )
-
-        smach.StateMachine.add(
-            "MOVE_ARM_TO_STAGE_INTERMEDIATE_2_FINAL",
-            gms.move_arm("stage_intermediate_2"),
-            transitions={
-                "succeeded": "MOVE_ARM_TO_STAGE_INTERMEDIATE_FINAL",
-                "failed": "MOVE_ARM_TO_STAGE_INTERMEDIATE_2_FINAL",
-            },
-        )
-
-        smach.StateMachine.add(
-            "MOVE_ARM_TO_STAGE_INTERMEDIATE_FINAL",
-            gms.move_arm("stage_intermediate"),
+            "MOVE_ARM_TO_PRE_PLACE",
+            gms.move_arm("pre_place"),
             transitions={
                 "succeeded": "OVERALL_SUCCESS",
-                "failed": "MOVE_ARM_TO_STAGE_INTERMEDIATE_FINAL",
+                "failed": "MOVE_ARM_TO_PRE_PLACE",
             },
         )
 
@@ -282,7 +168,7 @@ def main():
     sm.register_start_cb(start_cb)
 
     # smach viewer
-    if rospy.get_param("~viewer_enabled", False):
+    if rospy.get_param("~viewer_enabled", True):
         sis = smach_ros.IntrospectionServer(
             "unstage_object_smach_viewer", sm, "/UNSTAGE_OBJECT_SMACH_VIEWER"
         )

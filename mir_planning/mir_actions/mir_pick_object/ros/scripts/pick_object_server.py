@@ -183,7 +183,7 @@ def main():
         # move arm to appropriate position
         smach.StateMachine.add(
             "MOVE_ARM",
-            gms.move_arm("look_at_workspace_from_near"),
+            gms.move_arm("pre_place"),
             transitions={
                 "succeeded": "START_OBJECT_LIST_MERGER",
                 "failed": "MOVE_ARM",
@@ -402,7 +402,7 @@ def main():
         # move arm to stage_intemediate position
         smach.StateMachine.add(
             "MOVE_ARM_TO_STAGE_INTERMEDIATE",
-            gms.move_arm("stage_intermediate"),
+            gms.move_arm("pre_place"),
             transitions={
                 "succeeded": "VERIFY_OBJECT_GRASPED",
                 "failed": "MOVE_ARM_TO_STAGE_INTERMEDIATE",
@@ -411,23 +411,10 @@ def main():
 
         smach.StateMachine.add(
             "VERIFY_OBJECT_GRASPED",
-            gbs.send_and_wait_events_combined(
-                event_in_list=[
-                    ("/gripper_controller/grasp_monitor/event_in", "e_trigger")
-                ],
-                event_out_list=[
-                    (
-                        "/gripper_controller/grasp_monitor/event_out",
-                        "e_object_grasped",
-                        True,
-                    )
-                ],
-                timeout_duration=5,
-            ),
+            gms.verify_object_grasped(5),
             transitions={
-                "success": "OVERALL_SUCCESS",
-                "timeout": "OVERALL_FAILED",
-                "failure": "OVERALL_FAILED",
+                "succeeded": "OVERALL_SUCCESS",
+                "failed": "OVERALL_FAILED",
             },
         )
 
@@ -436,7 +423,7 @@ def main():
 
 
     # smach viewer
-    if rospy.get_param("~viewer_enabled", False):
+    if rospy.get_param("~viewer_enabled", True):
         sis = IntrospectionServer(
             "pick_object_smach_viewer", sm, "/PICK_OBJECT_SMACH_VIEWER"
         )

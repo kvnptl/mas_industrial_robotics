@@ -4,6 +4,8 @@
  * Author: Mohammad Wasil
  *
  */
+#include <algorithm>
+
 #include <boost/filesystem.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
@@ -82,7 +84,7 @@ MultimodalObjectRecognitionROS::MultimodalObjectRecognitionROS(ros::NodeHandle n
   // debug topics
   pub_debug_cloud_plane_ = nh_.advertise<sensor_msgs::PointCloud2>("output/debug_cloud_plane", 1);
 
-  nh_.param<bool>("debug_mode", debug_mode_, true);
+  nh_.param<bool>("debug_mode", debug_mode_, false);
   ROS_WARN_STREAM("[multimodal_object_recognition] Debug mode: " <<debug_mode_);
   // Pub pose array
   pub_pc_object_pose_array_  = nh_.advertise<geometry_msgs::PoseArray>("output/pc_object_pose_array", 10);
@@ -107,7 +109,6 @@ MultimodalObjectRecognitionROS::~MultimodalObjectRecognitionROS()
 void MultimodalObjectRecognitionROS::synchronizeCallback(const sensor_msgs::ImageConstPtr &image,
                       const sensor_msgs::PointCloud2ConstPtr &cloud)
 {
-  ROS_INFO("sync callback");
   if (pointcloud_msg_received_count_ < 1)
   {
     ROS_INFO("[multimodal_object_recognition_ros] Received enough messages");
@@ -220,7 +221,6 @@ void MultimodalObjectRecognitionROS::segmentPointCloud(mas_perception_msgs::Obje
     sensor_msgs::PointCloud2 ros_pc2;
     pcl::toROSMsg(*cloud_debug, ros_pc2);
     ros_pc2.header.frame_id = target_frame_id_;
-    ROS_INFO("hello vamsi publish my segmented cloud");
     pub_debug_cloud_plane_.publish(ros_pc2);
   }
 }
@@ -236,6 +236,8 @@ void MultimodalObjectRecognitionROS::recognizeCloudAndImage()
   if (data_collection_)
   {
     std::string filename;
+    
+    // Save PCD (point cloud) cluster 
     for (auto& cluster : clusters_3d)
     {
       filename = "";
@@ -244,7 +246,8 @@ void MultimodalObjectRecognitionROS::recognizeCloudAndImage()
       mpu::object::savePcd(cluster, logdir_, filename);
       ROS_INFO_STREAM("\033[1;35mSaving point cloud to \033[0m" << logdir_);
     }
-        // Save raw image
+    
+    // Save raw image
     cv_bridge::CvImagePtr raw_cv_image;
     if (mpu::object::getCVImage(image_msg_, raw_cv_image))
     {
@@ -394,7 +397,8 @@ void MultimodalObjectRecognitionROS::recognizeCloudAndImage()
               cv::FONT_HERSHEY_SIMPLEX, 0.3, cv::Scalar(0, 255, 0), 1);
       }
       // Remove large 2d misdetected bbox (misdetection)
-      double len_diag = sqrt(powf(((roi_2d.width + roi_2d.width) >> 1), 2));
+      double len_diag = sqrt(powf(roi_2d.width, 2) + powf(roi_2d.height, 2));
+
       if (len_diag > rgb_bbox_min_diag_ && len_diag < rgb_bbox_max_diag_)
       {
         PointCloud::Ptr cloud_roi(new PointCloud);
@@ -432,14 +436,28 @@ void MultimodalObjectRecognitionROS::recognizeCloudAndImage()
                                                               rgb_cluster_filter_limit_min_,
                                                               rgb_cluster_filter_limit_max_);
 
+          PointT min_pt;
+          PointT max_pt;
+          pcl::getMinMax3D(*cloud_roi, min_pt, max_pt);
+
+          rgb_object_list.objects[i].dimensions.vector.z = max_pt.z - min_pt.z;
+          ROS_INFO("[RGB Object Height] Object %s length: %f", object.name.c_str(), rgb_object_list.objects[i].dimensions.vector.z);
+
+          if (max_pt.z > 0.09)
+          {
+            ROS_INFO("[RGB Object Height] Object %s length is greater than 9cm: %f", object.name.c_str(), max_pt.z);
+          }
+
           sensor_msgs::PointCloud2 ros_filtered_rgb_pointcloud;
           pcl::toROSMsg(filtered_rgb_pointcloud, ros_filtered_rgb_pointcloud);
           ros_filtered_rgb_pointcloud.header.frame_id = target_frame_id_;
 
           pub_filtered_rgb_cloud_plane_.publish(ros_filtered_rgb_pointcloud);
 
-          // sleep for 3 seconds
-          ros::Duration(2.0).sleep();
+          // To visualize the filtered point cloud, sleep for 3 seconds after every point cloud
+          // ros::Duration(3.0).sleep();
+
+          //*********************************
 
           // Transform pose
           std::string frame_id = cloud_->header.frame_id;
@@ -691,6 +709,7 @@ void MultimodalObjectRecognitionROS::adjustObjectPose(mas_perception_msgs::Objec
     {
       yaw = 0.0;
     }
+
     // Update container pose
     if (object_list.objects[i].name == "CONTAINER_BOX_RED" ||
         object_list.objects[i].name == "CONTAINER_BOX_BLUE")
@@ -701,26 +720,42 @@ void MultimodalObjectRecognitionROS::adjustObjectPose(mas_perception_msgs::Objec
         mm_object_recognition_utils_->adjustContainerPose(object_list.objects[i], container_height_);
       }
     }
-    // Make pose flat
-    tf::Quaternion q2 = tf::createQuaternionFromRPY(0.0, change_in_pitch , yaw);
-    object_list.objects[i].pose.pose.orientation.x = q2.x();
-    object_list.objects[i].pose.pose.orientation.y = q2.y();
-    object_list.objects[i].pose.pose.orientation.z = q2.z();
-    object_list.objects[i].pose.pose.orientation.w = q2.w();
+    
+    if (object_list.objects[i].dimensions.vector.z > 0.09)
+    {
+      tf::Quaternion q2;
+      q2.setRPY(0.0, -1.57, 0.0);
+      object_list.objects[i].pose.pose.orientation.x = q2.x();
+      object_list.objects[i].pose.pose.orientation.y = q2.y();
+      object_list.objects[i].pose.pose.orientation.z = q2.z();
+      object_list.objects[i].pose.pose.orientation.w = q2.w();
+    }
+    else
+    {
+      // Make pose flat
+      tf::Quaternion q2 = tf::createQuaternionFromRPY(0.0, change_in_pitch , yaw);
+      object_list.objects[i].pose.pose.orientation.x = q2.x();
+      object_list.objects[i].pose.pose.orientation.y = q2.y();
+      object_list.objects[i].pose.pose.orientation.z = q2.z();
+      object_list.objects[i].pose.pose.orientation.w = q2.w(); 
+
+      object_list.objects[i].pose.pose.position.z = scene_segmentation_ros_->getWorkspaceHeight() +
+                              object_height_above_workspace_;      
+    }
 
     // Update workspace height
     if (scene_segmentation_ros_->getWorkspaceHeight() != -1000.0)
     {
-      object_list.objects[i].pose.pose.position.z = scene_segmentation_ros_->getWorkspaceHeight() +
-                              object_height_above_workspace_;
       if (object_list.objects[i].name == "CONTAINER_BOX_RED" ||
           object_list.objects[i].name == "CONTAINER_BOX_BLUE")
       {
+
         object_list.objects[i].pose.pose.position.z = scene_segmentation_ros_->getWorkspaceHeight() +
                               container_height_;
         ROS_WARN_STREAM("Updated container height: " << object_list.objects[i].pose.pose.position.z );
       }
     }
+    
     // Update axis or bolt pose
     if (object_list.objects[i].name == "M20_100" || object_list.objects[i].name == "AXIS")
     {
@@ -766,7 +801,6 @@ void MultimodalObjectRecognitionROS::loadObjectInfo(const std::string &filename)
 void MultimodalObjectRecognitionROS::eventCallback(const std_msgs::String::ConstPtr &msg)
 {
   std_msgs::String event_out;
-  ROS_INFO("inside the event callback");
   if (msg->data == "e_start")
   {
     // Synchronize callback
@@ -837,15 +871,8 @@ void MultimodalObjectRecognitionROS::configCallback(mir_object_recognition::Scen
   rgb_roi_adjustment_ = config.rgb_roi_adjustment;
   rgb_bbox_min_diag_ = config.rgb_bbox_min_diag;
   rgb_bbox_max_diag_ = config.rgb_bbox_max_diag;
-
-  // print rgb_roi_adjustment_, rgb_bbox_min_diag_, rgb_bbox_max_diag_
-  ROS_INFO_STREAM("rgb_roi_adjustment_: " << rgb_roi_adjustment_);
-  ROS_INFO_STREAM("rgb_bbox_min_diag_: " << rgb_bbox_min_diag_);
-  ROS_INFO_STREAM("rgb_bbox_max_diag_: " << rgb_bbox_max_diag_);
-
   rgb_cluster_filter_limit_min_ = config.rgb_cluster_filter_limit_min;
   rgb_cluster_filter_limit_max_ = config.rgb_cluster_filter_limit_max;
-
   rgb_cluster_remove_outliers_ = config.rgb_cluster_remove_outliers;
   // ROI params
   enable_roi_ = config.enable_roi;

@@ -5,6 +5,7 @@ import importlib
 import os
 
 import numpy as np
+import pc_object_recognition.utils.pc_utils as pc_utils
 import roslib
 import rospy
 import sensor_msgs.point_cloud2
@@ -15,7 +16,6 @@ from pc_object_recognition.cnn_based_classifiers import CNNBasedClassifiers
 from pc_object_recognition.dgcnn_classifier import DGCNNClassifier
 from pc_object_recognition.feature_based_classifiers import FeatureBasedClassifiers
 from pc_object_recognition.utils.features import FVRDDFeatureExtraction
-
 
 class PointcloudObjectRecognizer():
     """
@@ -60,29 +60,24 @@ class PointcloudObjectRecognizer():
                     subdivisions=[ngaussians, ngaussians, ngaussians], variance=variance)
                 feature_extraction.set_fv_params(gmm, use_rdd=True)
             elif model_id == "rdd":
-                feature_extraction.set_rdd_params(color=True)
-
+                feature_extraction.set_rdd_params(color=True)            
             classifier_file = os.path.join(model_dir, 'classifier.pkl')
             label_encoder = os.path.join(model_dir, 'label_encoder.pkl')
-            self.classifier = FeatureBasedClassifiers(
-                classifier_file, label_encoder)
-
+            self.classifier = FeatureBasedClassifiers(classifier_file, label_encoder)
+        
         elif model == "cnn_based":
-
             # model.t7 is the model file, we are not using .cpkt file
             checkpoint = os.path.join(model_dir, 'model.t7')
-
             module_name = "pc_object_recognition" + "." + model_id.lower()+"_"+"classifier"
-
             class_name = model_id.upper()+"Classifier"
             ClassifierClass = getattr(
                 importlib.import_module(module_name), class_name)
             model_configs = configs['model'][model][model_id.lower()]
 
-            self.classifier = ClassifierClass(model_path=checkpoint,
-                                              num_classes=model_configs['num_classes'],
-                                              num_points=model_configs['num_points'],
-                                              cloud_dim=model_configs['cloud_dim'])
+            self.classifier = ClassifierClass(model_path=checkpoint, 
+                                                num_classes=model_configs['num_classes'], 
+                                                num_points=model_configs['num_points'], 
+                                                cloud_dim=model_configs['cloud_dim'])
 
     def recognize_object_topic_cb(self, object_list):
         """
@@ -109,10 +104,16 @@ class PointcloudObjectRecognizer():
                     cloud = self.extract_pointcloud(
                         object.views[0].point_cloud, color="rgb")
 
-                    # Kevin: something wrong with passing the cloud to the classifier
-                    # check further comments in the classifier code
                     label, probability = self.classifier.classify(
                         cloud, center=True, rotate=True, pad=True)
+
+                    if (label, probability) != (None, None):
+                        name = self.label_to_name[label]
+                        probability = probability
+                    else:
+                        name = "unknown"
+                        probability = 0.0
+
 
                     if (label, probability) != (None, None):
                         name = self.label_to_name[label]
@@ -121,18 +122,9 @@ class PointcloudObjectRecognizer():
                         name = "unknown object found"
                         probability = 0.0
                         continue
-
-                    print('\n######################')
-                    print('name: ', name)
-                    print('######################\n')
-
-                # Kevin: why are we not storing name and probability in object?
-                # here it's getting overwritten
+                    rospy.loginfo('Name of the object found: %s', name)
                 object.name = name
                 object.probability = probability
-
-            # Kevin: why are we not updating recognized_object_list?
-            # this is just publishing incoming object_list
             self.pub.publish(recognized_object_list)
 
     def extract_pointcloud(self, pc, color="hsv"):
@@ -177,6 +169,7 @@ if __name__ == '__main__':
 
     object_recognizer = PointcloudObjectRecognizer(
         model, model_id, dataset, model_dir)
+
     rospy.loginfo('\033[92m'+"PCL Recognizer is ready using %s , model: %s ",
                   model, model_id)
     rospy.spin()
